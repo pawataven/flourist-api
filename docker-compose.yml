@@ -1,3 +1,13 @@
+# The whole Flourist dev stack. The frontends are separate repos, cloned next to this one:
+#   ../backoffice-template  ../Flourist-project-master
+name: flourist
+
+# Bind mounts from a Windows/macOS host do not deliver file events to the container.
+x-bind-mount-polling: &bind-mount-polling
+  WATCH_POLLING: 'true'
+  TSC_WATCHFILE: DynamicPriorityPolling
+  TSC_WATCHDIRECTORY: DynamicPriorityPolling
+
 services:
   db:
     image: postgres:17-alpine
@@ -24,13 +34,12 @@ services:
       - path: .env
         required: false
     environment:
+      <<: *bind-mount-polling
       DATABASE_URL: postgresql://postgres:postgres@db:5432/flourist
       DATABASE_MIGRATION_URL: postgresql://postgres:postgres@db:5432/flourist
       TEST_DATABASE_URL: postgresql://postgres:postgres@db:5432/flourist
       DATABASE_SSL: 'false'
-      # Bind mounts from a Windows/macOS host do not deliver file events to the container.
-      TSC_WATCHFILE: DynamicPriorityPolling
-      TSC_WATCHDIRECTORY: DynamicPriorityPolling
+      CORS_ORIGINS: http://localhost:3002,http://localhost:4321
     ports:
       - '8787:8787'
     volumes:
@@ -39,6 +48,39 @@ services:
     depends_on:
       db:
         condition: service_healthy
+
+  backoffice:
+    build: ../backoffice-template
+    command: bun run dev --host 0.0.0.0
+    environment:
+      <<: *bind-mount-polling
+      # The browser calls the api, so this is the host-published address, not the service name.
+      NUXT_PUBLIC_API_BASE: http://localhost:8787/api
+      # The http repos in app/lib/api are still stubs; switch to "http" once they call the api.
+      NUXT_PUBLIC_DATA_SOURCE: mock
+    ports:
+      - '3002:3002'
+    volumes:
+      - ../backoffice-template:/app
+      - /app/node_modules
+      - /app/.nuxt
+    depends_on:
+      - api
+
+  storefront:
+    build: ../Flourist-project-master
+    command: bun run dev --host 0.0.0.0
+    environment:
+      <<: *bind-mount-polling
+      PUBLIC_API_BASE: http://localhost:8787/api
+    ports:
+      - '4321:4321'
+    volumes:
+      - ../Flourist-project-master:/app
+      - /app/node_modules
+      - /app/.astro
+    depends_on:
+      - api
 
 volumes:
   pgdata:

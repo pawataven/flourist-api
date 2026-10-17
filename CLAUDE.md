@@ -4,7 +4,7 @@ REST API ของร้าน Flourist (storefront + backoffice) — NestJS 12,
 
 ## Commands
 
-- `bun run docker:up` — dev ด้วย Docker (Postgres ในเครื่อง + API hot reload); ใน container ใช้ `docker compose exec api bun run <script>`
+- `bun run docker:up` — dev ด้วย Docker ทั้งชุด (Postgres + API + backoffice + storefront; ต้อง clone `../backoffice-template` และ `../Flourist-project-master` ไว้ข้างกัน); ใน container ใช้ `docker compose exec api bun run <script>`
 - `bun run start:dev` — dev server ที่ http://localhost:8787/api (Swagger: `/api/docs`)
 - `bun run lint` · `bun run typecheck` · `bun run format`
 - `bun run test` — unit tests (`src/**/*.spec.ts`)

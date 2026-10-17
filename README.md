@@ -4,15 +4,32 @@ REST API for the Flourist storefront and back office. Built with NestJS 12, Driz
 
 ## Quick start (Docker — recommended for the team)
 
-Requires only Docker Desktop. Everyone gets the same Node, Bun and Postgres, and each developer has their own local database.
+Requires only Docker Desktop and Git. Everyone gets the same Node, Bun and Postgres, and each developer has their own local database.
 
-```bash
-cp .env.example .env        # database values in .env are overridden by docker-compose.yml
-bun run docker:up           # or: docker compose up --build
+`docker-compose.yml` runs the whole Flourist stack, so clone the two frontend repos next to this one, keeping these folder names:
+
+```
+<any folder>/
+├── flourist-api/              # this repo
+├── backoffice-template/
+└── Flourist-project-master/
 ```
 
-- Starts Postgres 17 and the API with hot reload on http://localhost:8787/api. Migrations run on every start.
-- Local DB for a GUI client: `postgresql://postgres:postgres@localhost:5432/flourist`
+```bash
+cd flourist-api
+cp .env.example .env        # optional; database values in .env are overridden by docker-compose.yml
+docker compose up -d --build
+```
+
+| Service     | URL                                                      |
+| ----------- | -------------------------------------------------------- |
+| API         | http://localhost:8787/api · Swagger `/api/docs`          |
+| Back Office | http://localhost:3002 (still on mock data)               |
+| Storefront  | http://localhost:4321                                    |
+| Postgres    | `postgresql://postgres:postgres@localhost:5432/flourist` |
+
+- Every service hot-reloads. API migrations run on every start.
+- Logs: `docker compose logs -f api` (or `backoffice`, `storefront`). Stop: `docker compose down`.
 - Run commands inside the container: `docker compose exec api bun run test:e2e` (DB suites run here too), `docker compose exec api bun run db:generate --name <change>`
 - After someone changes dependencies: `docker compose up --build -V` (`-V` refreshes the container's `node_modules`).
 - Reset the local database: `docker compose down -v`
@@ -78,7 +95,7 @@ flourist-api/
 ├── test/                          # e2e tests (supertest against the real app)
 ├── drizzle/                       # Generated SQL migrations — commit these
 ├── Dockerfile                     # Multi-stage, non-root, healthcheck
-├── docker-compose.yml             # Dev: Postgres + API with hot reload
+├── docker-compose.yml             # Dev: Postgres + API + both frontends, hot reload
 ├── docker-compose.prod.yml        # Prod-like: migrate → api, against the Supabase URLs in .env
 └── .github/workflows/ci.yml       # format · lint · typecheck · test · build · migrate · e2e
 ```
