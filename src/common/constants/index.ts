@@ -1,0 +1,11 @@
+export const REQUEST_ID_HEADER = 'x-request-id';
+
+export const DEFAULT_PAGE_SIZE = 20;
+export const MAX_PAGE_SIZE = 100;
+
+export const PG_ERROR = {
+  UNIQUE_VIOLATION: '23505',
+  FOREIGN_KEY_VIOLATION: '23503',
+  NOT_NULL_VIOLATION: '23502',
+  INVALID_TEXT_REPRESENTATION: '22P02',
+} as const;

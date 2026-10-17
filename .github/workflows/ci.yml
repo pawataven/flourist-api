@@ -1,0 +1,40 @@
+name: CI
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: flourist
+          POSTGRES_PASSWORD: flourist
+          POSTGRES_DB: flourist
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U flourist" --health-interval 5s --health-timeout 3s --health-retries 10
+    env:
+      DATABASE_URL: postgresql://flourist:flourist@localhost:5432/flourist
+      TEST_DATABASE_URL: postgresql://flourist:flourist@localhost:5432/flourist
+      DATABASE_SSL: 'false'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.4.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - run: bun install --frozen-lockfile
+      - run: bun run format:check
+      - run: bun run lint
+      - run: bun run typecheck
+      - run: bun run test
+      - run: bun run build
+      - run: node dist/database/migrate.js
+      - run: bun run test:e2e

@@ -1,0 +1,17 @@
+services:
+  migrate:
+    build: .
+    command: ['node', 'dist/database/migrate.js']
+    env_file: .env
+
+  api:
+    build: .
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      NODE_ENV: production
+    ports:
+      - '8787:8787'
+    depends_on:
+      migrate:
+        condition: service_completed_successfully

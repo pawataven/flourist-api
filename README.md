@@ -1,118 +1,125 @@
-<p align="center">
-  <a href="http://nestjs.com/" target="blank"><img src="https://nestjs.com/img/logo-small.svg" width="120" alt="Nest Logo" /></a>
-</p>
+# Flourist API
 
-[circleci-image]: https://img.shields.io/circleci/build/github/nestjs/nest/master?token=abc123def456
-[circleci-url]: https://circleci.com/gh/nestjs/nest
+REST API for the Flourist storefront and back office. Built with NestJS 12, Drizzle ORM and [Supabase](https://supabase.com) Postgres.
 
-  <p align="center">A progressive <a href="http://nodejs.org" target="_blank">Node.js</a> framework for building efficient and scalable server-side applications.</p>
-    <p align="center">
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/v/@nestjs/core.svg" alt="NPM Version" /></a>
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/l/@nestjs/core.svg" alt="Package License" /></a>
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/dm/@nestjs/common.svg" alt="NPM Downloads" /></a>
-<a href="https://circleci.com/gh/nestjs/nest" target="_blank"><img src="https://img.shields.io/circleci/build/github/nestjs/nest/master" alt="CircleCI" /></a>
-<a href="https://discord.gg/G7Qnnhy" target="_blank"><img src="https://img.shields.io/badge/discord-online-brightgreen.svg" alt="Discord"/></a>
-<a href="https://opencollective.com/nest#backer" target="_blank"><img src="https://opencollective.com/nest/backers/badge.svg" alt="Backers on Open Collective" /></a>
-<a href="https://opencollective.com/nest#sponsor" target="_blank"><img src="https://opencollective.com/nest/sponsors/badge.svg" alt="Sponsors on Open Collective" /></a>
-  <a href="https://paypal.me/kamilmysliwiec" target="_blank"><img src="https://img.shields.io/badge/Donate-PayPal-ff3f59.svg" alt="Donate us"/></a>
-    <a href="https://opencollective.com/nest#sponsor"  target="_blank"><img src="https://img.shields.io/badge/Support%20us-Open%20Collective-41B883.svg" alt="Support us"></a>
-  <a href="https://twitter.com/nestframework" target="_blank"><img src="https://img.shields.io/twitter/follow/nestframework.svg?style=social&label=Follow" alt="Follow us on Twitter"></a>
-</p>
-  <!--[![Backers on Open Collective](https://opencollective.com/nest/backers/badge.svg)](https://opencollective.com/nest#backer)
-  [![Sponsors on Open Collective](https://opencollective.com/nest/sponsors/badge.svg)](https://opencollective.com/nest#sponsor)-->
+## Quick start (Docker — recommended for the team)
 
-## Description
-
-[Nest](https://github.com/nestjs/nest) framework TypeScript starter repository.
-
-## Project setup
+Requires only Docker Desktop. Everyone gets the same Node, Bun and Postgres, and each developer has their own local database.
 
 ```bash
-$ bun install
+cp .env.example .env        # database values in .env are overridden by docker-compose.yml
+bun run docker:up           # or: docker compose up --build
 ```
 
-## Compile and run the project
+- Starts Postgres 17 and the API with hot reload on http://localhost:8787/api. Migrations run on every start.
+- Local DB for a GUI client: `postgresql://postgres:postgres@localhost:5432/flourist`
+- Run commands inside the container: `docker compose exec api bun run test:e2e` (DB suites run here too), `docker compose exec api bun run db:generate --name <change>`
+- After someone changes dependencies: `docker compose up --build -V` (`-V` refreshes the container's `node_modules`).
+- Reset the local database: `docker compose down -v`
+- Keep the repo **outside OneDrive / Dropbox**: syncing `node_modules` and `dist` makes file watching slow and flaky.
+
+## Quick start (without Docker, against Supabase)
 
 ```bash
-# development
-$ bun run start
-
-# watch mode
-$ bun run start:dev
-
-# production mode
-$ bun run start:prod
+bun install
+cp .env.example .env        # fill in the Supabase URLs (below)
+bun run db:migrate
+bun run start:dev           # http://localhost:8787/api
 ```
 
-## Run tests
+## Supabase setup
 
-```bash
-# unit tests
-$ bun run test
+In the Supabase dashboard, open **Connect** and copy two connection strings into `.env`:
 
-# e2e tests
-$ bun run test:e2e
+| Variable                 | Connection string                    | Why                                                              |
+| ------------------------ | ------------------------------------ | ---------------------------------------------------------------- |
+| `DATABASE_URL`           | **Transaction pooler** (port `6543`) | The running API: many short queries, IPv4, scales with instances |
+| `DATABASE_MIGRATION_URL` | **Session pooler** (port `5432`)     | Migrations and `drizzle-kit studio`                              |
 
-# test coverage
-$ bun run test:cov
+- TLS is on by default (`DATABASE_SSL=true`). To also verify the certificate, download the CA from **Database → SSL Configuration** and set `DATABASE_SSL_CA` to its path.
+- Don't add `?sslmode=` to the URLs; it is stripped, since TLS is configured by the variables above.
+- **Row Level Security** is enabled on every table (`.enableRLS()` in the schema). With no policies, the public Data API (anon / authenticated keys) cannot touch the tables; the API connects as `postgres`, which bypasses RLS. Add policies only if the frontend should query Supabase directly.
+- Only the `public` schema is managed by Drizzle; Supabase's own schemas (`auth`, `storage`, …) are left alone.
+- **Local database:** `supabase start` (Supabase CLI) runs the full stack in Docker with Postgres on `127.0.0.1:54322` (user/password `postgres`). Point both URLs there and set `DATABASE_SSL=false`.
+- **e2e tests** write rows, so they only run against `TEST_DATABASE_URL` (local Supabase or a throwaway Postgres) and skip otherwise. They never use your project's `DATABASE_URL`.
+
+- Swagger UI: http://localhost:8787/api/docs (JSON at `/api/docs/json`)
+- Liveness: `GET /api/health/live` · Readiness (checks DB): `GET /api/health/ready`
+- Feature routes are versioned: `GET /api/v1/categories`
+
+## Project structure
+
 ```
+flourist-api/
+├── src/
+│   ├── main.ts                    # Bootstrap: logger, listen
+│   ├── app.module.ts              # Root module: config, logging, rate limit, observe, DB, features
+│   ├── app.setup.ts               # Helmet, CORS, compression, prefix, versioning, validation, Swagger
+│   ├── config/                    # Env schema (zod) + typed AppConfigService
+│   ├── common/                    # Cross-cutting code, no business logic
+│   │   ├── constants/
+│   │   ├── decorators/            # Swagger helpers (ApiPaginatedResponse, ApiErrorResponses)
+│   │   ├── dto/                   # PaginationQueryDto, Paginated<T>, ErrorResponseDto
+│   │   ├── filters/               # AllExceptionsFilter: one error shape for every failure
+│   │   └── utils/
+│   ├── database/
+│   │   ├── schema/                # Drizzle tables — one file per table, re-exported from index.ts
+│   │   ├── connection.ts          # Supabase pooler URLs + TLS options
+│   │   ├── database.module.ts     # Global pg Pool + Drizzle client (DATABASE token)
+│   │   └── migrate.ts             # Runtime migrator used in production
+│   └── modules/                   # Feature modules
+│       ├── health/                # Liveness / readiness probes
+│       └── categories/            # Reference CRUD module — copy this for new features
+│           ├── dto/
+│           ├── categories.controller.ts   # HTTP only
+│           ├── categories.service.ts      # Business rules
+│           ├── categories.repository.ts   # SQL only
+│           └── categories.service.spec.ts # Unit test (co-located)
+├── test/                          # e2e tests (supertest against the real app)
+├── drizzle/                       # Generated SQL migrations — commit these
+├── Dockerfile                     # Multi-stage, non-root, healthcheck
+├── docker-compose.yml             # Dev: Postgres + API with hot reload
+├── docker-compose.prod.yml        # Prod-like: migrate → api, against the Supabase URLs in .env
+└── .github/workflows/ci.yml       # format · lint · typecheck · test · build · migrate · e2e
+```
+
+### Adding a feature
+
+1. Add a table in `src/database/schema/<name>.ts` and export it from `schema/index.ts`.
+2. `bun run db:generate --name <change>` → review the SQL in `drizzle/` → `bun run db:migrate`.
+3. Copy `src/modules/categories/` to `src/modules/<name>/`, rename, and register the module in `app.module.ts`.
+
+## Conventions
+
+| Concern       | Behaviour                                                                                        |
+| ------------- | ------------------------------------------------------------------------------------------------ |
+| Config        | Every variable is validated at boot (`src/config/env.schema.ts`); the app refuses bad config.    |
+| Errors        | `{ statusCode, code, message, details?, path, timestamp, requestId }`. 5xx never leak internals. |
+| DB errors     | Unique / FK violations → `409 CONFLICT`; bad input → `400`.                                      |
+| Validation    | `class-validator` DTOs; unknown fields are rejected (`VALIDATION_ERROR`).                        |
+| Pagination    | `?page=&limit=&search=` → `{ data, meta: { page, limit, total, totalPages } }`.                  |
+| Logging       | pino: JSON in production, pretty locally. Auth headers and cookies redacted.                     |
+| Tracing       | `x-request-id` is accepted or generated, returned in the response and in every log line.         |
+| Security      | Helmet headers, CORS allow-list, rate limit (`THROTTLE_*`), no `x-powered-by`.                   |
+| Shutdown      | SIGTERM drains requests and closes the DB pool.                                                  |
+| Observability | NestJS Observe is wired in; set `OBSERVE_APP_KEY` / `OBSERVE_APP_SECRET` to enable it.           |
+
+## Scripts
+
+| Script                                          | Purpose                                                         |
+| ----------------------------------------------- | --------------------------------------------------------------- |
+| `start:dev` / `start:debug`                     | Watch mode                                                      |
+| `build` / `start:prod`                          | Compile to `dist/` and run it                                   |
+| `lint` · `format` · `typecheck`                 | Code quality                                                    |
+| `test` · `test:cov` · `test:e2e`                | Unit, coverage, end-to-end (DB suites need `TEST_DATABASE_URL`) |
+| `db:generate` · `db:migrate` · `db:studio`      | Drizzle migrations and browser                                  |
+| `db:migrate:prod`                               | Apply migrations from the compiled build                        |
+| `docker:up` · `docker:down` · `docker:test:e2e` | Docker dev environment                                          |
 
 ## Deployment
 
-When you're ready to deploy your NestJS application to production, there are some key steps you can take to ensure it runs as efficiently as possible. Check out the [deployment documentation](https://docs.nestjs.com/deployment) for more information.
-
-If you are looking for a cloud-based platform to deploy your NestJS application, check out [Mau](https://mau.nestjs.com), our official platform for deploying NestJS applications on AWS. Mau makes deployment straightforward and fast, requiring just a few simple steps:
-
 ```bash
-$ bun install -g @nestjs/mau
-$ mau deploy
+docker compose -f docker-compose.prod.yml up --build   # migrate → api on :8787
 ```
 
-With Mau, you can deploy your application in just a few clicks, allowing you to focus on building features rather than managing infrastructure.
-
-## Observability
-
-In production applications, observability is essential for understanding how your system behaves, detecting issues early, and maintaining reliable performance.
-
-[NestJS Observe](https://observe.nestjs.com) automatically instruments your NestJS application, giving you deep visibility into your system with minimal setup:
-
-- **Distributed tracing:** Follow requests across services and understand how they flow through your system.
-- **Waterfall analysis:** Visualize request execution and identify slow operations, bottlenecks, and unexpected delays.
-- **Performance analysis:** Analyze application performance in real time and quickly pinpoint areas that need optimization.
-- **Metrics:** Track key application and infrastructure metrics to understand system health and performance trends.
-- **Logging:** Centralize and correlate logs with traces and other telemetry to make debugging easier.
-- **Error tracking:** Detect errors quickly and investigate their root causes with the surrounding context.
-- **SLA monitoring:** Track service-level objectives and identify when your application is approaching or exceeding defined thresholds.
-- **Alarms and alerts:** Set up alerts for critical errors, performance degradation, SLA violations, and other anomalies so your team can react quickly.
-
-This project is already instrumented. Create a free account at [observe.nestjs.com](https://observe.nestjs.com), add an application, and paste the generated app key and secret into the `ObserveModule.forRoot()` call in `src/app.module.ts`.
-
-The free plan needs no payment details and covers 300,000 events a month. You can also browse the [live demo](https://www.observe-demo.nestjs.com/dashboard) first - the whole dashboard over a busy service's data, with nothing to install.
-
-## Resources
-
-Check out a few resources that may come in handy when working with NestJS:
-
-- Visit the [NestJS Documentation](https://docs.nestjs.com) to learn more about the framework.
-- For questions and support, please visit our [Discord channel](https://discord.gg/G7Qnnhy).
-- To dive deeper and get more hands-on experience, check out our official video [courses](https://courses.nestjs.com/).
-- Deploy your application to AWS with the help of [NestJS Mau](https://mau.nestjs.com) in just a few clicks.
-- Auto-instrument your application with [NestJS Observe](https://observe.nestjs.com). Distributed tracing, metrics, and logging made easy. Error tracking and performance monitoring for your NestJS applications.
-- Visualize your application graph and interact with the NestJS application in real-time using [NestJS Devtools](https://devtools.nestjs.com).
-- Need help with your project (part-time to full-time)? Check out our official [enterprise support](https://enterprise.nestjs.com).
-- To stay in the loop and get updates, follow us on [X](https://x.com/nestframework) and [LinkedIn](https://linkedin.com/company/nestjs).
-- Looking for a job, or have a job to offer? Check out our official [Jobs board](https://jobs.nestjs.com).
-
-## Support
-
-Nest is an MIT-licensed open source project. It can grow thanks to the sponsors and support by the amazing backers. If you'd like to join them, please [read more here](https://docs.nestjs.com/support).
-
-## Stay in touch
-
-- Author - [Kamil Myśliwiec](https://twitter.com/kammysliwiec)
-- Website - [https://nestjs.com](https://nestjs.com/)
-- Twitter - [@nestframework](https://twitter.com/nestframework)
-
-## License
-
-Nest is [MIT licensed](https://github.com/nestjs/nest/blob/master/LICENSE).
+In other environments: build the image, run `node dist/database/migrate.js` once per release, then start the container. Set `NODE_ENV=production`, the Supabase `DATABASE_URL` and `DATABASE_MIGRATION_URL`, `CORS_ORIGINS`, and `TRUST_PROXY=true` behind a load balancer. Consider `SWAGGER_ENABLED=false` for public deployments.
